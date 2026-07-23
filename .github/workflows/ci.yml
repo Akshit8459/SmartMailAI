@@ -24,9 +24,11 @@ jobs:
         pip install -r backend/requirements.txt
 
     - name: Run Backend Unit & RAG Tests
+      env:
+        PYTHONPATH: ./backend
       run: |
         python -m pytest backend/tests/ -v
 
     - name: Build Docker Container Check
       run: |
-        docker build -t smartmail-backend:latest ./backend
+        docker build -t smartmail-backend:latest .
