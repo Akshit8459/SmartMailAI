@@ -1,5 +1,12 @@
+import base64
+import uuid
+from datetime import datetime
+from email.message import EmailMessage
+
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from typing import List, Optional
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import decode_access_token
@@ -9,11 +16,14 @@ from app.domain.dtos import (
     BulkActionRequest, ReplyEmailRequest, DraftAutosaveRequest, SmartInboxEmailDTO, AttachmentDTO
 )
 from app.utils.sanitizer import sanitize_html, resolve_cid_images
+from app.models.entities import Email, GmailAccount, Thread, User
+from app.core.security import decrypt_token
 from app.services.gmail.gmail_service import (
     sync_mark_read as gmail_sync_read,
     sync_star as gmail_sync_star,
     sync_archive as gmail_sync_archive,
     sync_trash as gmail_sync_trash,
+    send_email as gmail_send_email,
 )
 
 router = APIRouter(prefix="/emails", tags=["Emails"])
@@ -111,9 +121,9 @@ async def poll_gmail_changes(
 
 @router.get("/attachments/{attachment_id}", response_model=AttachmentDTO)
 async def get_attachment_detail(request: Request, attachment_id: str, db: AsyncSession = Depends(get_db)):
-    _user_id = get_user_id(request)
+    user_id = get_user_id(request)
     repo = EmailRepository(db)
-    att = await repo.get_attachment_by_id(attachment_id)
+    att = await repo.get_attachment_by_id(attachment_id, user_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     return AttachmentDTO.model_validate(att)
@@ -122,9 +132,9 @@ async def get_attachment_detail(request: Request, attachment_id: str, db: AsyncS
 @router.get("/attachments/{attachment_id}/content")
 async def get_attachment_content(request: Request, attachment_id: str, db: AsyncSession = Depends(get_db)):
     import os
-    _user_id = get_user_id(request)
+    user_id = get_user_id(request)
     repo = EmailRepository(db)
-    att = await repo.get_attachment_by_id(attachment_id)
+    att = await repo.get_attachment_by_id(attachment_id, user_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     
@@ -146,11 +156,100 @@ async def handle_bulk_action(request: Request, payload: BulkActionRequest, db: A
     return {"ok": True, "modified_count": count, "action": payload.action}
 
 
+@router.post("/send")
+async def send_email_route(request: Request, payload: ComposeEmailRequest, db: AsyncSession = Depends(get_db)):
+    """Send a composed email through Gmail and retain it in the local Sent folder."""
+    user_id = get_user_id(request)
+    recipients = [address.strip() for address in [*payload.to, *payload.cc, *payload.bcc] if address.strip()]
+    if not recipients:
+        raise HTTPException(status_code=422, detail="At least one recipient is required")
+    if not payload.subject.strip() and not payload.body_html.strip():
+        raise HTTPException(status_code=422, detail="An email needs a subject or message body")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    safe_html = sanitize_html(payload.body_html)
+    plain_text = BeautifulSoup(safe_html, "html.parser").get_text("\n", strip=True)
+    message = EmailMessage()
+    message["From"] = user.email
+    message["To"] = ", ".join(payload.to)
+    if payload.cc:
+        message["Cc"] = ", ".join(payload.cc)
+    if payload.bcc:
+        message["Bcc"] = ", ".join(payload.bcc)
+    message["Subject"] = payload.subject.strip() or "(No subject)"
+    message.set_content(plain_text or " ")
+    if safe_html:
+        message.add_alternative(safe_html, subtype="html")
+
+    account = (await db.execute(select(GmailAccount).where(GmailAccount.user_id == user_id))).scalars().first()
+    is_demo_account = bool(account and decrypt_token(account.encrypted_access_token).startswith("demo_"))
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    gmail_message_id = await gmail_send_email(user_id, raw_message)
+    if not gmail_message_id and not is_demo_account:
+        raise HTTPException(status_code=502, detail="Gmail could not send this message. Please try again.")
+
+    thread_id = payload.thread_id
+    if thread_id:
+        thread = await db.get(Thread, thread_id)
+        if not thread or thread.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Email thread not found")
+        thread.last_message_at = datetime.utcnow()
+    else:
+        thread_id = f"local_thread_{uuid.uuid4().hex}"
+        db.add(Thread(
+            id=thread_id,
+            user_id=user_id,
+            subject=payload.subject.strip() or "(No subject)",
+            snippet=plain_text[:250],
+            last_message_at=datetime.utcnow(),
+        ))
+
+    message_id = gmail_message_id or f"local_sent_{uuid.uuid4().hex}"
+    db.add(Email(
+        id=message_id,
+        thread_id=thread_id,
+        user_id=user_id,
+        sender_name=user.name or user.email,
+        sender_email=user.email,
+        recipient_list=", ".join(recipients),
+        subject=payload.subject.strip() or "(No subject)",
+        snippet=plain_text[:250],
+        body_html=safe_html,
+        body_text=plain_text,
+        received_at=datetime.utcnow(),
+        is_unread=False,
+        is_starred=False,
+        is_important=False,
+        labels=["SENT"],
+    ))
+    await db.commit()
+    return {
+        "ok": True,
+        "message_id": message_id,
+        "message": "Email sent" if gmail_message_id else "Email saved to Sent (demo mode)",
+    }
+
+
 @router.post("/reply")
 async def reply_email_route(request: Request, payload: ReplyEmailRequest, db: AsyncSession = Depends(get_db)):
     user_id = get_user_id(request)
-    # Send email or store response draft
-    return {"ok": True, "message": f"Successfully processed {payload.action_type} email to {', '.join(payload.to)}"}
+    repo = EmailRepository(db)
+    source_email = await repo.get_email_by_id(payload.email_id, user_id)
+    if not source_email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return await send_email_route(
+        request,
+        ComposeEmailRequest(
+            to=payload.to,
+            subject=payload.subject,
+            body_html=payload.body_html,
+            thread_id=source_email.thread_id,
+        ),
+        db,
+    )
 
 
 @router.post("/drafts/autosave")
@@ -178,7 +277,7 @@ async def search_emails(
 async def get_thread(request: Request, thread_id: str, db: AsyncSession = Depends(get_db)):
     user_id = get_user_id(request)
     repo = EmailRepository(db)
-    emails = await repo.get_thread_emails(thread_id)
+    emails = await repo.get_thread_emails(thread_id, user_id)
     results = []
     for email in emails:
         dto = EmailDTO.model_validate(email)

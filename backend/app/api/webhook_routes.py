@@ -38,7 +38,7 @@ async def _bg_webhook_sync(email_address: str, history_id: Optional[str] = None)
                 return
 
             sync_svc = SyncService(session)
-            await sync_svc.sync_user_inbox(acc.user_id, max_results=15)
+            await sync_svc.sync_user_inbox(acc.user_id)
             logger.info("Real-time Pub/Sub sync completed successfully for user %s (%s)", acc.user_id, email_address)
     except Exception as e:
         logger.error("Error in _bg_webhook_sync for %s: %s", email_address, e)

@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy import or_, and_, desc, String, cast, func
 from sqlalchemy.orm import selectinload
 from app.repositories.base import BaseRepository
-from app.models.entities import Email, Thread, EmailChunk, User
+from app.models.entities import Attachment, Email, Thread, EmailChunk, User
 
 class EmailRepository(BaseRepository[Email]):
     def __init__(self, session: AsyncSession):
@@ -140,8 +140,14 @@ class EmailRepository(BaseRepository[Email]):
         result = await self.session.execute(stmt)
         return result.scalars().first()
 
-    async def get_thread_emails(self, thread_id: str) -> List[Email]:
-        stmt = select(Email).where(Email.thread_id == thread_id).order_by(Email.received_at).options(selectinload(Email.attachments))
+    async def get_thread_emails(self, thread_id: str, user_id: str) -> List[Email]:
+        """Return only emails from a thread owned by the requesting user."""
+        stmt = (
+            select(Email)
+            .where(Email.thread_id == thread_id, Email.user_id == user_id)
+            .order_by(Email.received_at)
+            .options(selectinload(Email.attachments))
+        )
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
@@ -379,10 +385,18 @@ class EmailRepository(BaseRepository[Email]):
 
     # ─── Attachment helpers ───────────────────────────────────────────────────
 
-    async def get_attachment_by_id(self, attachment_id: str):
-        """Retrieve a single Attachment record by its primary key."""
-        from app.models.entities import Attachment
-        return await self.session.get(Attachment, attachment_id)
+    async def get_attachment_by_id(self, attachment_id: str, user_id: Optional[str] = None):
+        """Retrieve an attachment, optionally restricting it to its email owner."""
+        if user_id is None:
+            return await self.session.get(Attachment, attachment_id)
+
+        stmt = (
+            select(Attachment)
+            .join(Email, Attachment.email_id == Email.id)
+            .where(Attachment.id == attachment_id, Email.user_id == user_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def save_attachment_text(self, attachment_id: str, extracted_text: str) -> bool:
         """Persist extracted text back to the Attachment record."""

@@ -179,13 +179,13 @@ async def ask_attachment(
     """
     Answer a question about an attachment's content using its extracted text chunks.
     """
-    _user_id = get_user_id(request)
+    user_id = get_user_id(request)
     repo = EmailRepository(db)
 
     # Retrieve the attachment record
-    attachment = await repo.get_attachment_by_id(req.attachment_id)
+    attachment = await repo.get_attachment_by_id(req.attachment_id, user_id)
     if not attachment and req.email_id:
-        email = await repo.get_email_by_id(req.email_id, _user_id)
+        email = await repo.get_email_by_id(req.email_id, user_id)
         if email and email.attachments:
             attachment = email.attachments[0]
 
@@ -288,9 +288,9 @@ async def generate_reply(
     user_intent: str = Body("Thank the sender and confirm my availability."),
     db: AsyncSession = Depends(get_db),
 ):
-    _user_id = get_user_id(request)
+    user_id = get_user_id(request)
     repo = EmailRepository(db)
-    email = await repo.get_by_id(email_id)
+    email = await repo.get_email_by_id(email_id, user_id)
     if not email:
         raise HTTPException(status_code=404, detail="Email not found")
 

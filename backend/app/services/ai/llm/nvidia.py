@@ -97,11 +97,11 @@ class NvidiaNIMClient(AbstractLLMClient):
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.2,
-                "max_tokens": 512,
+                "max_tokens": 320,
                 "stream": False
             }
             try:
-                async with httpx.AsyncClient(timeout=25.0) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=3.0)) as client:
                     response = await client.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
                     if response.status_code == 200:
                         data = response.json()
@@ -126,11 +126,11 @@ class NvidiaNIMClient(AbstractLLMClient):
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.2,
-                "max_tokens": 512,
+                "max_tokens": 320,
                 "stream": True
             }
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=3.0)) as client:
                     async with client.stream("POST", f"{self.base_url}/chat/completions", headers=headers, json=payload) as response:
                         if response.status_code == 200:
                             streamed_any = False

@@ -33,4 +33,5 @@ RUN mkdir -p /app/storage/attachments
 EXPOSE 8000
 
 ENV PYTHONPATH=/app/backend
+ENV DATABASE_URL=sqlite+aiosqlite:///./storage/smartmail.db
 CMD ["python", "backend/main.py"]

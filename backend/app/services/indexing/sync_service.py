@@ -6,7 +6,8 @@ from typing import List, Dict, Any, Optional
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.core.security import decrypt_token
+from app.core.config import settings
+from app.core.security import decrypt_token, encrypt_token
 from app.repositories.email_repository import EmailRepository
 from app.repositories.user_repository import UserRepository
 from app.models.entities import User, Email, Thread, EmailChunk, SyncState, GmailAccount, Attachment

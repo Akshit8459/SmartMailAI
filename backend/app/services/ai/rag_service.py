@@ -105,8 +105,6 @@ class RAGService:
         return all_chunks
 
     async def get_sources_for_query(self, user_id: str, query: str, top_k: int = 15) -> List[Dict[str, Any]]:
-        await self._ensure_user_chunks(user_id)
-        
         q_lower = query.lower()
         is_intent_query = any(w in q_lower for w in ["unread", "recent", "latest", "inbox", "summarize", "overview", "starred", "important", "all"])
 
@@ -166,9 +164,6 @@ class RAGService:
         chat_history: List[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         t0 = time.monotonic()
-        # Always synchronize any new inbox emails into chunks before processing query
-        await self._ensure_user_chunks(user_id)
-
         q_lower = query.lower()
         is_intent_query = any(w in q_lower for w in ["unread", "recent", "latest", "inbox", "summarize", "overview", "starred", "important", "all"])
 
@@ -216,9 +211,6 @@ class RAGService:
         chat_history: List[Dict[str, str]] = None,
     ) -> AsyncGenerator[str, None]:
         t0 = time.monotonic()
-        # Always synchronize any new inbox emails into chunks before processing query
-        await self._ensure_user_chunks(user_id)
-
         q_lower = query.lower()
         is_intent_query = any(w in q_lower for w in ["unread", "recent", "latest", "inbox", "summarize", "overview", "starred", "important", "all"])
 
@@ -250,7 +242,7 @@ class RAGService:
         Fetch all emails in a thread, build a chronological timeline,
         and stream an LLM-generated structured summary.
         """
-        thread_emails = await self.email_repo.get_thread_emails(thread_id)
+        thread_emails = await self.email_repo.get_thread_emails(thread_id, user_id)
         if not thread_emails:
             async def _empty():
                 yield "No messages found in this thread."

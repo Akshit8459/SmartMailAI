@@ -12,7 +12,8 @@ let state = {
     token: null,
     limit: 50,
     offset: 0,
-    totalCount: 0
+    totalCount: 0,
+    syncRetryCount: 0
 };
 
 // ─────────────────────────────────────────
@@ -582,6 +583,19 @@ async function loadEmails(folder = 'INBOX', offset = 0) {
         renderEmailList(emails);
         updatePaginationUI();
         updateUnreadBadge();
+
+        // Initial Gmail sync runs in the background. Retry a few times so a
+        // deployed instance shows newly synced messages without a manual refresh.
+        if (folder === 'INBOX' && offset === 0 && emails.length < state.limit && state.syncRetryCount < 4) {
+            const retryDelay = [1500, 3000, 5000, 8000][state.syncRetryCount++];
+            window.setTimeout(() => {
+                if (state.currentFolder === 'INBOX' && state.emails.length < state.limit) {
+                    loadEmails('INBOX', 0);
+                }
+            }, retryDelay);
+        } else {
+            state.syncRetryCount = 0;
+        }
     } catch (err) {
         console.error('loadEmails error:', err);
         if (err.message !== 'Session expired') {
@@ -1120,14 +1134,27 @@ function closeCompose() {
 
 async function handleComposeSubmit(e) {
     e.preventDefault();
-    const to = document.getElementById('composeTo').value.split(',').map(s => s.trim());
+    const to = document.getElementById('composeTo').value.split(',').map(s => s.trim()).filter(Boolean);
     const subject = document.getElementById('composeSubject').value;
     const body_html = document.getElementById('composeBody').value;
+    if (!to.length) {
+        alert('Enter at least one recipient.');
+        return;
+    }
     try {
         const res = await apiFetch('/emails/send', {
             method: 'POST',
-            body: JSON.stringify({ to, subject, body_html })
+            body: JSON.stringify({
+                to,
+                subject,
+                body_html,
+                thread_id: state.isReplyMode ? state.emails.find(e => e.id === state.selectedEmailId)?.thread_id : null
+            })
         });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || 'Failed to send email.');
+        }
         if (res.ok) {
             closeCompose();
             loadEmails(state.currentFolder);
