@@ -15,5 +15,8 @@ python-multipart>=0.0.6
 structlog>=23.1.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
-python-dotenv>=1.0.0
 openai>=1.0.0
+pypdf>=3.17.0
+python-pptx>=0.6.21
+python-docx>=0.8.11
+
