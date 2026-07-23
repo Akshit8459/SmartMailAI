@@ -563,7 +563,7 @@ async function loadEmails(folder = 'INBOX', offset = 0) {
     state.currentFolder = folder;
     state.offset = offset;
     const rowsContainer = document.getElementById('emailRows');
-    if (rowsContainer && offset === 0 && (!state.emails || state.emails.length === 0)) {
+    if (rowsContainer && offset === 0 && (!state.emails || state.emails.length === 0) && state.syncRetryCount === 0) {
         rowsContainer.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2.5"><svg class="animate-spin w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg><span class="font-medium text-slate-300">Syncing your Gmail inbox... Emails will appear in a moment!</span></div>';
     }
 

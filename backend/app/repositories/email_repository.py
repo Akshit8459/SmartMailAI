@@ -60,13 +60,8 @@ class EmailRepository(BaseRepository[Email]):
                 Email.subject.ilike("%feedback%"),
                 Email.sender_email.ilike("%.edu%")
             ))
-        elif lbl == "INBOX":
-            stmt = stmt.where(or_(
-                Email.labels == None,
-                cast(Email.labels, String).ilike("%inbox%"),
-                ~cast(Email.labels, String).ilike("%trash%"),
-                ~cast(Email.labels, String).ilike("%spam%")
-            ))
+        elif lbl == "INBOX" or lbl == "ALL":
+            pass
         elif lbl != "ALL":
             stmt = stmt.where(cast(Email.labels, String).ilike(f"%{lbl}%"))
         
@@ -124,13 +119,8 @@ class EmailRepository(BaseRepository[Email]):
                 Email.subject.ilike("%feedback%"),
                 Email.sender_email.ilike("%.edu%")
             ))
-        elif lbl == "INBOX":
-            stmt = stmt.where(or_(
-                Email.labels == None,
-                cast(Email.labels, String).ilike("%inbox%"),
-                ~cast(Email.labels, String).ilike("%trash%"),
-                ~cast(Email.labels, String).ilike("%spam%")
-            ))
+        elif lbl == "INBOX" or lbl == "ALL":
+            pass
         elif lbl != "ALL":
             stmt = stmt.where(cast(Email.labels, String).ilike(f"%{lbl}%"))
         
