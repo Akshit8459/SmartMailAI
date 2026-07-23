@@ -122,9 +122,14 @@ class SyncService:
             count = 0
             processed_thread_ids = set()
             processed_email_ids = set()
+
+            # Foreground batch: process first 20 latest emails for instant Page 1 render
+            fg_ids = message_ids_to_fetch[:20]
+            bg_ids = message_ids_to_fetch[20:]
+
             batch_size = 10
-            for i in range(0, len(message_ids_to_fetch), batch_size):
-                batch_ids = message_ids_to_fetch[i:i+batch_size]
+            for i in range(0, len(fg_ids), batch_size):
+                batch_ids = fg_ids[i:i+batch_size]
                 to_fetch_ids = []
                 for msg_id in batch_ids:
                     with self.session.no_autoflush:
@@ -192,112 +197,110 @@ class SyncService:
                     )
                     self.session.add(email_entity)
                     processed_email_ids.add(msg_id)
-
-                    date_str = parsed["received_at"].strftime("%Y-%m-%d")
-
-                    # Parse and fetch real Gmail attachments
-                    from app.services.indexing.attachment_parser import attachment_parser
-                    for idx, att_info in enumerate(parsed.get("attachments", []), 1):
-                        raw_bytes = None
-                        if att_info.get("data"):
-                            try:
-                                raw_bytes = base64.urlsafe_b64decode(att_info["data"])
-                            except Exception:
-                                pass
-                        elif att_info.get("attachment_id"):
-                            try:
-                                att_url = f"{GMAIL_MESSAGES_URL}/{msg_id}/attachments/{att_info['attachment_id']}"
-                                att_resp = await client.get(att_url, headers=headers)
-                                if att_resp.status_code == 200:
-                                    att_data_b64 = att_resp.json().get("data", "")
-                                    if att_data_b64:
-                                        raw_bytes = base64.urlsafe_b64decode(att_data_b64)
-                            except Exception as ex:
-                                logger.warning("Failed to fetch Gmail attachment %s: %s", att_info.get("attachment_id"), ex)
-
-                        extracted_text = ""
-                        storage_path = ""
-                        att_id = f"att_{msg_id}_{idx}"
-                        if raw_bytes:
-                            extracted_text = attachment_parser.extract_text(att_info["filename"], raw_bytes, att_info["mime_type"])
-                            try:
-                                storage_dir = os.path.join(os.getcwd(), "storage", "attachments")
-                                os.makedirs(storage_dir, exist_ok=True)
-                                file_path = os.path.join(storage_dir, f"{att_id}_{att_info['filename']}")
-                                with open(file_path, "wb") as f:
-                                    f.write(raw_bytes)
-                                storage_path = file_path
-                            except Exception as st_err:
-                                logger.warning("Failed to save attachment file %s: %s", att_info.get("filename"), st_err)
-                        else:
-                            extracted_text = f"Attachment filename: {att_info['filename']}"
-
-                        att_entity = Attachment(
-                            id=att_id,
-                            email_id=msg_id,
-                            filename=att_info["filename"],
-                            mime_type=att_info["mime_type"],
-                            file_size=att_info["file_size"],
-                            storage_path=storage_path,
-                            extracted_text=extracted_text
-                        )
-                        self.session.add(att_entity)
-
-                        # Vector chunk attachment text for RAG
-                        att_chunks = semantic_chunker.chunk_attachment(
-                            email_id=msg_id,
-                            thread_id=parsed["thread_id"],
-                            user_id=user_id,
-                            attachment_id=att_id,
-                            filename=att_info["filename"],
-                            extracted_text=extracted_text,
-                            subject=parsed["subject"],
-                            sender=parsed["sender_name"],
-                            date_str=date_str
-                        )
-                        for c_data in att_chunks:
-                            chunk_entity = EmailChunk(
-                                email_id=c_data["email_id"],
-                                thread_id=c_data["thread_id"],
-                                user_id=c_data["user_id"],
-                                chunk_index=c_data["chunk_index"],
-                                content=c_data["content"],
-                                chunk_metadata=c_data["chunk_metadata"],
-                                embedding=c_data["embedding"]
-                            )
-                            self.session.add(chunk_entity)
-
-                    chunks_data = semantic_chunker.chunk_email(
-                        email_id=parsed["id"],
-                        thread_id=parsed["thread_id"],
-                        user_id=user_id,
-                        sender=parsed["sender_name"],
-                        subject=parsed["subject"],
-                        date_str=date_str,
-                        body_text=parsed["body_text"]
-                    )
-
-                    for c_data in chunks_data:
-                        chunk_entity = EmailChunk(
-                            email_id=c_data["email_id"],
-                            thread_id=c_data["thread_id"],
-                            user_id=c_data["user_id"],
-                            chunk_index=c_data["chunk_index"],
-                            content=c_data["content"],
-                            chunk_metadata=c_data["chunk_metadata"],
-                            embedding=c_data["embedding"]
-                        )
-                        self.session.add(chunk_entity)
-
                     count += 1
 
                 try:
                     await self.session.commit()
                 except Exception as ex:
-                    logger.warning("Session commit warning: %s", ex)
+                    logger.warning("Foreground commit warning: %s", ex)
                     await self.session.rollback()
 
+            # Trigger non-blocking background task for remaining 250+ emails
+            if bg_ids:
+                asyncio.create_task(run_background_gmail_sync(user_id, access_token, bg_ids))
+
             return count
+
+
+async def run_background_gmail_sync(user_id: str, access_token: str, message_ids: list):
+    """Background task that continuously syncs remaining 250+ Gmail emails in background batches."""
+    if not message_ids:
+        return
+    try:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            svc = SyncService(session)
+            headers = {"Authorization": f"Bearer {access_token}"}
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                processed_thread_ids = set()
+                processed_email_ids = set()
+                batch_size = 15
+                for i in range(0, len(message_ids), batch_size):
+                    batch_ids = message_ids[i:i+batch_size]
+                    to_fetch = []
+                    for msg_id in batch_ids:
+                        with session.no_autoflush:
+                            existing = await session.get(Email, msg_id)
+                        if existing:
+                            processed_email_ids.add(msg_id)
+                        else:
+                            to_fetch.append(msg_id)
+
+                    if not to_fetch:
+                        continue
+
+                    tasks = [client.get(f"{GMAIL_MESSAGES_URL}/{m_id}?format=full", headers=headers) for m_id in to_fetch]
+                    responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    for msg_resp in responses:
+                        if isinstance(msg_resp, Exception) or msg_resp.status_code != 200:
+                            continue
+
+                        parsed = svc._parse_gmail_message(msg_resp.json(), user_id)
+                        msg_id = parsed["id"]
+                        thread_id = parsed["thread_id"]
+
+                        if msg_id in processed_email_ids:
+                            continue
+
+                        with session.no_autoflush:
+                            existing_email = await session.get(Email, msg_id)
+                        if existing_email:
+                            processed_email_ids.add(msg_id)
+                            continue
+
+                        if thread_id not in processed_thread_ids:
+                            with session.no_autoflush:
+                                thread = await session.get(Thread, thread_id)
+                            if not thread:
+                                thread = Thread(
+                                    id=thread_id,
+                                    user_id=user_id,
+                                    subject=parsed["subject"],
+                                    snippet=parsed["snippet"],
+                                    last_message_at=parsed["received_at"],
+                                    unread_count=1 if parsed["is_unread"] else 0
+                                )
+                                session.add(thread)
+                            processed_thread_ids.add(thread_id)
+
+                        email_entity = Email(
+                            id=parsed["id"],
+                            thread_id=parsed["thread_id"],
+                            user_id=user_id,
+                            sender_name=parsed["sender_name"],
+                            sender_email=parsed["sender_email"],
+                            recipient_list=parsed["recipient_list"],
+                            subject=parsed["subject"],
+                            snippet=parsed["snippet"],
+                            body_html=parsed["body_html"] or f"<div><p>{parsed['body_text']}</p></div>",
+                            body_text=parsed["body_text"],
+                            received_at=parsed["received_at"],
+                            is_unread=parsed["is_unread"],
+                            is_starred=parsed["is_starred"],
+                            is_important=parsed["is_important"],
+                            labels=parsed["labels"]
+                        )
+                        session.add(email_entity)
+                        processed_email_ids.add(msg_id)
+
+                    try:
+                        await session.commit()
+                    except Exception as ex:
+                        logger.warning("Background session commit warning: %s", ex)
+                        await session.rollback()
+    except Exception as ex:
+        logger.warning("Background sync error for user %s: %s", user_id, ex)
 
     def _parse_gmail_message(self, msg_data: dict, user_id: str) -> dict:
         msg_id = msg_data.get("id")

@@ -584,16 +584,15 @@ async function loadEmails(folder = 'INBOX', offset = 0) {
         updatePaginationUI();
         updateUnreadBadge();
 
-        // Initial Gmail sync runs in the background. Retry a few times so a
-        // deployed instance shows newly synced messages without a manual refresh.
-        if (folder === 'INBOX' && offset === 0 && emails.length < state.limit && state.syncRetryCount < 4) {
-            const retryDelay = [1500, 3000, 5000, 8000][state.syncRetryCount++];
+        // Continuously refresh inbox in background while remaining 250+ emails load
+        if (folder === 'INBOX' && offset === 0 && state.syncRetryCount < 10) {
+            state.syncRetryCount++;
             window.setTimeout(() => {
-                if (state.currentFolder === 'INBOX' && state.emails.length < state.limit) {
+                if (state.currentFolder === 'INBOX' && offset === 0) {
                     loadEmails('INBOX', 0);
                 }
-            }, retryDelay);
-        } else {
+            }, 3000);
+        } else if (state.syncRetryCount >= 10) {
             state.syncRetryCount = 0;
         }
     } catch (err) {
