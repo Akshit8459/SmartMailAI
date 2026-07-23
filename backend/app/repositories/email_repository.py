@@ -62,12 +62,13 @@ class EmailRepository(BaseRepository[Email]):
             ))
         elif lbl == "INBOX":
             stmt = stmt.where(or_(
-                cast(Email.labels, String).like("%INBOX%"),
-                ~cast(Email.labels, String).like("%SENT%"),
-                Email.labels == None
+                Email.labels == None,
+                cast(Email.labels, String).ilike("%inbox%"),
+                ~cast(Email.labels, String).ilike("%trash%"),
+                ~cast(Email.labels, String).ilike("%spam%")
             ))
         elif lbl != "ALL":
-            stmt = stmt.where(cast(Email.labels, String).like(f"%{lbl}%"))
+            stmt = stmt.where(cast(Email.labels, String).ilike(f"%{lbl}%"))
         
         stmt = stmt.order_by(desc(Email.received_at)).offset(offset).limit(limit).options(selectinload(Email.attachments))
         result = await self.session.execute(stmt)
@@ -85,15 +86,15 @@ class EmailRepository(BaseRepository[Email]):
         elif lbl == "UNREAD":
             stmt = stmt.where(Email.is_unread == True)
         elif lbl == "IMPORTANT":
-            stmt = stmt.where(or_(Email.is_important == True, cast(Email.labels, String).like("%IMPORTANT%")))
+            stmt = stmt.where(or_(Email.is_important == True, cast(Email.labels, String).ilike("%IMPORTANT%")))
         elif lbl == "SENT":
-            conditions = [cast(Email.labels, String).like("%SENT%")]
+            conditions = [cast(Email.labels, String).ilike("%SENT%")]
             if user_email:
                 conditions.append(Email.sender_email == user_email)
             stmt = stmt.where(or_(*conditions))
         elif lbl == "WORK":
             stmt = stmt.where(or_(
-                cast(Email.labels, String).like("%WORK%"),
+                cast(Email.labels, String).ilike("%WORK%"),
                 Email.subject.ilike("%work%"),
                 Email.subject.ilike("%interview%"),
                 Email.subject.ilike("%meeting%"),
@@ -104,8 +105,8 @@ class EmailRepository(BaseRepository[Email]):
             ))
         elif lbl == "INVOICES":
             stmt = stmt.where(or_(
-                cast(Email.labels, String).like("%INVOICES%"),
-                cast(Email.labels, String).like("%PURCHASES%"),
+                cast(Email.labels, String).ilike("%INVOICES%"),
+                cast(Email.labels, String).ilike("%PURCHASES%"),
                 Email.subject.ilike("%invoice%"),
                 Email.subject.ilike("%receipt%"),
                 Email.subject.ilike("%payment%"),
@@ -116,7 +117,7 @@ class EmailRepository(BaseRepository[Email]):
             ))
         elif lbl == "ACADEMIC":
             stmt = stmt.where(or_(
-                cast(Email.labels, String).like("%ACADEMIC%"),
+                cast(Email.labels, String).ilike("%ACADEMIC%"),
                 Email.subject.ilike("%academic%"),
                 Email.subject.ilike("%paper%"),
                 Email.subject.ilike("%research%"),
@@ -125,12 +126,13 @@ class EmailRepository(BaseRepository[Email]):
             ))
         elif lbl == "INBOX":
             stmt = stmt.where(or_(
-                cast(Email.labels, String).like("%INBOX%"),
-                ~cast(Email.labels, String).like("%SENT%"),
-                Email.labels == None
+                Email.labels == None,
+                cast(Email.labels, String).ilike("%inbox%"),
+                ~cast(Email.labels, String).ilike("%trash%"),
+                ~cast(Email.labels, String).ilike("%spam%")
             ))
         elif lbl != "ALL":
-            stmt = stmt.where(cast(Email.labels, String).like(f"%{lbl}%"))
+            stmt = stmt.where(cast(Email.labels, String).ilike(f"%{lbl}%"))
         
         result = await self.session.execute(stmt)
         return result.scalar() or 0
