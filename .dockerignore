@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.env.local
+.venv/
+venv/
+node_modules/
+.pytest_cache/
+storage/attachments/*
+!storage/attachments/.gitkeep

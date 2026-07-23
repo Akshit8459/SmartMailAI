@@ -1,0 +1,32 @@
+name: SmartMail AI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r backend/requirements.txt
+
+    - name: Run Backend Unit & RAG Tests
+      run: |
+        python -m pytest backend/tests/ -v
+
+    - name: Build Docker Container Check
+      run: |
+        docker build -t smartmail-backend:latest ./backend

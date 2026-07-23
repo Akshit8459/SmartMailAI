@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartMail AI — Intelligent Gmail Client</title>
+    <meta name="description" content="AI-Powered Gmail Clone with NVIDIA NIM RAG Assistant, Semantic Search, and Instant Summaries">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden h-screen flex flex-col">
+
+    <!-- ════════════════════════════════════════════
+         LOGIN SCREEN — shown when not authenticated
+         ════════════════════════════════════════════ -->
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950">
+        <!-- Animated background -->
+        <div class="absolute inset-0 overflow-hidden pointer-events-none">
+            <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse"></div>
+            <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse" style="animation-delay:1s"></div>
+        </div>
+        <div class="relative z-10 flex flex-col items-center gap-8 max-w-md w-full px-6">
+            <!-- Logo -->
+            <div class="flex flex-col items-center gap-3">
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
+                    <i data-lucide="mail" class="w-10 h-10 text-white"></i>
+                </div>
+                <h1 class="font-outfit font-bold text-4xl bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">SmartMail <span class="text-indigo-400">AI</span></h1>
+                <p class="text-slate-400 text-sm text-center">NVIDIA-powered intelligent email assistant.<br>Sign in with Google to access your inbox.</p>
+            </div>
+            <!-- Login Card -->
+            <div class="w-full bg-slate-900/80 border border-slate-700/60 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-5">
+                <div class="space-y-2 text-center">
+                    <h2 class="font-outfit font-semibold text-xl text-slate-100">Welcome back</h2>
+                    <p class="text-slate-400 text-xs">Your emails, summarized and organized with AI.</p>
+                </div>
+                <!-- Google OAuth Button -->
+                <button id="googleLoginBtn" onclick="handleGoogleLogin()"
+                    class="w-full flex items-center justify-center gap-3 px-5 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-semibold text-sm transition shadow-lg shadow-white/10 active:scale-95">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5">
+                    Continue with Google
+                </button>
+                
+                <!-- Demo Guest Login Button -->
+                <button id="demoLoginBtn" onclick="handleDemoLogin()"
+                    class="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs transition border border-slate-700/80 active:scale-95">
+                    <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+                    Instant Demo Guest Access
+                </button>
+
+                <!-- Error message -->
+                <p id="loginError" class="hidden text-rose-400 text-xs text-center"></p>
+                <!-- Features list -->
+                <div class="pt-4 border-t border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-xs text-slate-400"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i> AI email summaries powered by NVIDIA NIM</div>
+                    <div class="flex items-center gap-2 text-xs text-slate-400"><i data-lucide="search" class="w-3.5 h-3.5 text-indigo-400"></i> Semantic search across your entire inbox</div>
+                    <div class="flex items-center gap-2 text-xs text-slate-400"><i data-lucide="shield" class="w-3.5 h-3.5 text-emerald-400"></i> Your data stays private and encrypted</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         APP SHELL — shown after authentication
+         ════════════════════════════════════════════ -->
+    <div id="appShell" class="hidden flex-col h-screen flex">
+
+    <!-- TOP HEADER NAVBAR -->
+    <header class="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-4 flex items-center justify-between gap-4 z-20">
+        <!-- Logo & Menu Trigger -->
+        <div class="flex items-center gap-3 w-64">
+            <button id="toggleSidebar" class="transition" aria-label="Toggle navigation">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i data-lucide="mail" class="w-5 h-5 text-white"></i>
+                </div>
+                <span class="font-outfit font-bold text-xl bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
+                    SmartMail <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">AI</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- SEARCH BAR (Classic Metadata Search) -->
+        <div class="flex-1 max-w-2xl relative">
+            <div class="relative flex items-center">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3.5 text-slate-400"></i>
+                <input type="text" id="searchInput" 
+                    placeholder="Search emails (e.g. from:microsoft, label:important, has:attachment)..."
+                    class="w-full bg-slate-800/80 border border-slate-700/60 rounded-xl pl-10 pr-10 py-2 text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                <button id="clearSearch" class="hidden absolute right-3 text-slate-400 hover:text-slate-200">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <!-- AI Search Suggestion Dropdown -->
+            <div id="searchSuggestions" style="display:none" class="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl z-50 overflow-hidden text-xs">
+                <div id="searchSuggestionsList" class="py-1"></div>
+            </div>
+        </div>
+
+        <!-- USER PROFILE & AI ASSISTANT TOGGLE -->
+        <div class="flex items-center gap-3">
+            <button id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Light / Dark Theme" class="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition flex items-center justify-center border border-slate-700/60">
+                <i data-lucide="sun" id="themeSunIcon" class="w-4 h-4 text-amber-400 hidden"></i>
+                <i data-lucide="moon" id="themeMoonIcon" class="w-4 h-4 text-indigo-400"></i>
+            </button>
+            <button id="toggleAIChat" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-sm shadow-md shadow-indigo-500/20 transition transform active:scale-95">
+                <i data-lucide="sparkles" class="w-4 h-4 text-amber-300 animate-pulse"></i>
+                <span>AI Assistant</span>
+            </button>
+            <div class="w-px h-6 bg-slate-800"></div>
+            <div class="flex items-center gap-2 cursor-pointer p-1 rounded-xl hover:bg-slate-800/60 transition">
+                <div id="userAvatarContainer" class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-indigo-600 text-white overflow-hidden border border-indigo-500/40 shrink-0 shadow-sm">
+                    <img id="userAvatar" referrerpolicy="no-referrer" src="" alt="Avatar" class="w-full h-full object-cover hidden">
+                    <span id="userAvatarFallback" class="select-none font-bold">U</span>
+                </div>
+                <div class="hidden sm:block text-left">
+                    <div id="userName" class="text-xs font-semibold text-slate-200">Loading...</div>
+                    <div id="userEmail" class="text-[10px] text-slate-400"></div>
+                </div>
+            </div>
+            <button id="logoutBtn" title="Sign out" class="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN APP BODY -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Mobile Sidebar Overlay (tap outside to close) -->
+        <div id="sidebarOverlay" class="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm hidden lg:hidden" aria-hidden="true"></div>
+
+        <!-- LEFT SIDEBAR -->
+        <aside id="sidebar" class="w-64 border-r border-slate-800/80 bg-slate-900/40 p-3 flex flex-col justify-between transition-all duration-300">
+            <div class="space-y-4">
+                <!-- Compose Button -->
+                <button id="openComposeBtn" class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                    <span>Compose</span>
+                </button>
+
+                <!-- Navigation Folders -->
+                <nav class="space-y-1">
+                    <a href="#" data-folder="INBOX" class="nav-item active flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition text-indigo-400 bg-indigo-500/10">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="inbox" class="w-4 h-4"></i>
+                            <span>Inbox</span>
+                        </div>
+                        <span id="unreadBadge" class="text-xs bg-indigo-500 text-white px-2 py-0.5 rounded-full font-bold">2</span>
+                    </a>
+                    <a href="#" data-folder="STARRED" class="nav-item flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="star" class="w-4 h-4"></i>
+                            <span>Starred</span>
+                        </div>
+                    </a>
+                    <a href="#" data-folder="SENT" class="nav-item flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="send" class="w-4 h-4"></i>
+                            <span>Sent</span>
+                        </div>
+                    </a>
+                    <a href="#" data-folder="IMPORTANT" class="nav-item flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="bookmark" class="w-4 h-4"></i>
+                            <span>Important</span>
+                        </div>
+                    </a>
+                    <!-- Smart Inbox (AI Priority Sort) -->
+                    <a href="#" id="smartInboxNavBtn" class="nav-item flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-indigo-500/10 transition group">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="brain" class="w-4 h-4 text-indigo-400"></i>
+                            <span class="text-indigo-300 font-semibold">Smart Inbox</span>
+                        </div>
+                        <span class="text-[9px] bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 px-1.5 py-0.5 rounded font-mono">AI</span>
+                    </a>
+                </nav>
+
+                <div class="pt-4 border-t border-slate-800/80 sidebar-extra">
+                    <div class="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Labels</div>
+                    <div class="space-y-1">
+                        <a href="#" data-folder="WORK" class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Work
+                        </a>
+                        <a href="#" data-folder="INVOICES" class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Invoices
+                        </a>
+                        <a href="#" data-folder="ACADEMIC" class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                            <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Academic
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer info -->
+            <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800/60 text-xs text-slate-400 space-y-1">
+                <div class="flex items-center justify-between text-slate-300">
+                    <span class="font-semibold">NVIDIA NIM</span>
+                    <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono">ACTIVE</span>
+                </div>
+                <div class="text-[11px] text-slate-400">Model: Llama 3.3 70B</div>
+            </div>
+        </aside>
+
+        <!-- EMAIL LIST VIEW -->
+        <main id="emailListContainer" class="flex-1 border-r border-slate-800/80 flex flex-col bg-slate-950 overflow-hidden">
+            <!-- List Toolbar -->
+            <div class="h-12 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-900/30 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="selectAll" title="Select All" class="rounded bg-slate-800 border-slate-700 text-indigo-600 focus:ring-indigo-500">
+                    <button id="refreshInbox" title="Refresh Inbox" class="hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800">
+                        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                    </button>
+                    
+                    <!-- Floating / Conditional Bulk Actions Bar -->
+                    <div id="bulkActionsBar" style="display:none" class="items-center gap-1.5 pl-2 border-l border-slate-800">
+                        <span id="selectedCountBadge" class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-[11px]">0 selected</span>
+                        <button onclick="triggerBulkAction('mark_read')" title="Mark as Read" class="hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center gap-1">
+                            <i data-lucide="mail-open" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="triggerBulkAction('mark_unread')" title="Mark as Unread" class="hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center gap-1">
+                            <i data-lucide="mail" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="triggerBulkAction('star')" title="Star Selected" class="hover:text-amber-400 p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center gap-1">
+                            <i data-lucide="star" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="triggerBulkAction('archive')" title="Archive Selected" class="hover:text-indigo-400 p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center gap-1">
+                            <i data-lucide="archive" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="triggerBulkAction('delete')" title="Delete Selected" class="hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center gap-1">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="emailRange" class="font-medium text-slate-300">1–50 of 50</span>
+                    <div class="flex items-center gap-1">
+                        <button id="prevPageBtn" title="Older Page" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition disabled:opacity-30 disabled:hover:bg-transparent">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <button id="nextPageBtn" title="Newer Page" class="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition disabled:opacity-30 disabled:hover:bg-transparent">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Rows Container -->
+            <div id="emailRows" class="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+                <!-- Rows injected dynamically via JS -->
+            </div>
+        </main>
+
+        <!-- EMAIL VIEW PANEL (THREAD DETAILS) -->
+        <section id="emailViewPanel" class="hidden flex-1 bg-slate-950 flex flex-col overflow-hidden">
+            <!-- View Toolbar -->
+            <div class="h-13 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-900/40 text-xs text-slate-300">
+                <!-- Left: Back Button -->
+                <button id="backToListBtn" class="flex items-center gap-1.5 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl hover:bg-slate-800 transition font-medium">
+                    <i data-lucide="arrow-left" class="w-4 h-4 text-slate-400"></i>
+                    <span>Back to Inbox</span>
+                </button>
+
+                <!-- Right: Email Action Buttons -->
+                <div class="flex items-center gap-1.5" id="detailActionToolbar">
+                    <button id="detailMarkUnreadBtn" onclick="toggleReadSelectedEmail()" title="Mark as Unread" class="p-2 rounded-xl text-slate-300 hover:text-indigo-300 hover:bg-indigo-500/10 border border-slate-800 hover:border-indigo-500/30 transition flex items-center gap-1.5 text-xs font-medium">
+                        <i data-lucide="mail" class="w-4 h-4 text-indigo-400"></i>
+                        <span class="hidden sm:inline">Mark Unread</span>
+                    </button>
+
+                    <button id="detailStarBtn" onclick="toggleStarSelectedEmail()" title="Star email" class="p-2 rounded-xl text-slate-300 hover:text-amber-300 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/30 transition flex items-center gap-1.5 text-xs font-medium">
+                        <i data-lucide="star" class="w-4 h-4 text-amber-400"></i>
+                        <span class="hidden sm:inline">Star</span>
+                    </button>
+
+                    <button id="detailArchiveBtn" onclick="archiveSelectedEmail()" title="Archive email" class="p-2 rounded-xl text-slate-300 hover:text-emerald-300 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/30 transition flex items-center gap-1.5 text-xs font-medium">
+                        <i data-lucide="archive" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="hidden sm:inline">Archive</span>
+                    </button>
+
+                    <button id="detailDeleteBtn" onclick="deleteSelectedEmail()" title="Delete email" class="p-2 rounded-xl text-slate-300 hover:text-rose-300 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition flex items-center gap-1.5 text-xs font-medium">
+                        <i data-lucide="trash-2" class="w-4 h-4 text-rose-400"></i>
+                        <span class="hidden sm:inline">Delete</span>
+                    </button>
+
+                    <button id="detailReplyBtn" onclick="openReplyToSelectedEmail()" title="Reply to sender" class="p-2 rounded-xl text-slate-300 hover:text-blue-300 hover:bg-blue-500/10 border border-slate-800 hover:border-blue-500/30 transition flex items-center gap-1.5 text-xs font-medium">
+                        <i data-lucide="reply" class="w-4 h-4 text-blue-400"></i>
+                        <span class="hidden sm:inline">Reply</span>
+                    </button>
+
+                    <div class="h-4 w-px bg-slate-800 mx-1"></div>
+
+                    <button id="aiSummarizeThreadBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 transition text-xs font-semibold shadow-sm">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>
+                        <span>Summarize Email</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Thread Content -->
+            <div id="threadContent" class="flex-1 overflow-y-auto p-6 space-y-6">
+                <!-- Thread messages injected here -->
+            </div>
+        </section>
+
+        <!-- RIGHT SIDEBAR (AI ASSISTANT CHAT) -->
+        <aside id="aiChatPanel" class="w-80 border-l border-slate-800/80 flex flex-col bg-slate-900/40 backdrop-blur-md overflow-hidden transition-all duration-300">
+            <!-- Panel Header -->
+            <div class="h-12 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-medium text-slate-300 bg-slate-900/50">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <span>SmartMail Assistant</span>
+                </div>
+                <button id="closeAIChatBtn" class="hover:text-white p-1 rounded hover:bg-slate-800">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Chat Messages Container -->
+            <div id="aiChatMessages" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs">
+                <!-- Initial Welcome Message -->
+                <div class="flex items-start gap-2.5">
+                    <div class="w-6 h-6 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-[10px] text-indigo-300 font-bold shrink-0">AI</div>
+                    <div class="bg-slate-800/90 rounded-2xl rounded-tl-none p-3 text-slate-300 border border-slate-700/60 leading-relaxed shadow-sm">
+                        Hello! I am your SmartMail AI assistant powered by NVIDIA NIM. Ask me anything about your inbox, or request email summaries.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggestion Chips -->
+            <div class="p-2 border-t border-slate-800/60 flex flex-wrap gap-1.5 bg-slate-950/30">
+                <button class="ai-chip text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-indigo-900/50 text-slate-300 border border-slate-700 transition">💡 Summarize unread emails</button>
+                <button class="ai-chip text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-indigo-900/50 text-slate-300 border border-slate-700 transition">🔍 Find interview invite</button>
+                <button class="ai-chip text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-indigo-900/50 text-slate-300 border border-slate-700 transition">📄 Show invoice emails</button>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <form id="aiChatForm" class="p-3 border-t border-slate-800/80 bg-slate-900/60">
+                <div class="relative flex items-center">
+                    <input type="text" id="aiChatInput" placeholder="Ask AI about your emails..." required class="w-full bg-slate-800/90 border border-slate-700/80 rounded-xl pl-3 pr-10 py-2 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition">
+                    <button type="submit" class="absolute right-1.5 p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition">
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </form>
+
+            <!-- RAG Developer Dashboard (collapsible) -->
+            <div id="ragDashboard" class="flex-shrink-0 border-t border-slate-800/80 bg-slate-950/60">
+                <button id="toggleRagDashboard" class="w-full px-3 py-2 flex items-center justify-between text-[10px] text-slate-400 hover:text-slate-200 transition">
+                    <div class="flex items-center gap-1.5">
+                        <i data-lucide="bar-chart-2" class="w-3 h-3 text-indigo-400"></i>
+                        <span class="font-semibold text-indigo-300 uppercase tracking-wider">RAG Dashboard</span>
+                    </div>
+                    <i data-lucide="chevron-up" id="dashboardChevron" class="w-3 h-3 transition-transform"></i>
+                </button>
+                <div id="ragDashboardContent" style="display:none" class="px-3 pb-3 space-y-2 text-[10px]">
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="bg-slate-900 rounded-lg p-2 border border-slate-800">
+                            <div class="text-slate-400">Chunks Indexed</div>
+                            <div id="statChunks" class="text-indigo-300 font-bold text-sm">—</div>
+                        </div>
+                        <div class="bg-slate-900 rounded-lg p-2 border border-slate-800">
+                            <div class="text-slate-400">Emails Indexed</div>
+                            <div id="statEmails" class="text-indigo-300 font-bold text-sm">—</div>
+                        </div>
+                        <div class="bg-slate-900 rounded-lg p-2 border border-slate-800">
+                            <div class="text-slate-400">Avg Latency</div>
+                            <div id="statLatency" class="text-emerald-300 font-bold text-sm">—</div>
+                        </div>
+                        <div class="bg-slate-900 rounded-lg p-2 border border-slate-800">
+                            <div class="text-slate-400">Embed Dims</div>
+                            <div id="statDims" class="text-amber-300 font-bold text-sm">—</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between bg-slate-900 rounded-lg p-2 border border-slate-800">
+                        <span class="text-slate-400">LLM Provider</span>
+                        <span id="statProvider" class="text-emerald-400 font-semibold">—</span>
+                    </div>
+                    <button onclick="refreshRagDashboard()" class="w-full py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition text-[10px] font-semibold flex items-center justify-center gap-1">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh Stats
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+    </div><!-- /#appContainer -->
+
+    <!-- COMPOSE MODAL -->
+    <div id="composeModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Modal Header -->
+            <div class="h-12 border-b border-slate-800 px-4 flex items-center justify-between text-sm font-medium text-slate-200 bg-slate-950/40">
+                <span>New Message</span>
+                <button id="closeComposeBtn" type="button" class="hover:text-white p-1 rounded hover:bg-slate-800">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form -->
+            <form id="composeForm" class="p-4 flex-1 flex flex-col space-y-3 overflow-y-auto">
+                <div class="border-b border-slate-800 pb-2">
+                    <input type="email" id="composeTo" required placeholder="To: recipient@example.com" class="w-full bg-transparent text-slate-200 placeholder-slate-400 focus:outline-none text-xs">
+                </div>
+                <div class="border-b border-slate-800 pb-2">
+                    <input type="text" id="composeSubject" required placeholder="Subject" class="w-full bg-transparent font-medium text-slate-200 placeholder-slate-400 focus:outline-none text-xs">
+                </div>
+                
+                <!-- AI Generator Prompt Helper Bar -->
+                <div class="space-y-2 bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-500/20">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+                        <input type="text" id="aiComposePrompt" placeholder="Ask AI to write email (e.g. Write leave application for tomorrow)..." class="flex-1 bg-transparent text-slate-200 text-xs focus:outline-none">
+                        <button type="button" id="generateAIDraftBtn" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px]">Generate</button>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 text-[10px]">
+                        <button type="button" onclick="setComposePrompt('Confirm attendance and thank the sender')" class="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-indigo-900/60 text-indigo-300 border border-slate-700 transition">✅ Confirm</button>
+                        <button type="button" onclick="setComposePrompt('Politely ask to reschedule for another date')" class="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-indigo-900/60 text-slate-300 border border-slate-700 transition">🗓️ Reschedule</button>
+                        <button type="button" onclick="setComposePrompt('Politely decline due to prior scheduling conflict')" class="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-indigo-900/60 text-slate-300 border border-slate-700 transition">❌ Decline</button>
+                        <button type="button" onclick="setComposePrompt('Request more details regarding agenda and documents')" class="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-indigo-900/60 text-slate-300 border border-slate-700 transition">❓ Request Details</button>
+                    </div>
+                </div>
+
+                <textarea id="composeBody" rows="8" placeholder="Write your email message here..." class="w-full bg-transparent text-slate-200 placeholder-slate-400 focus:outline-none resize-none flex-1 text-xs"></textarea>
+
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/30 text-xs">
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                        <span>Send Email</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════
+         AI COMMAND PALETTE MODAL (Ctrl + K)
+         ════════════════════════════════════════════ -->
+    <div id="commandPaletteModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-start justify-center pt-24 px-4">
+        <div class="w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col transform transition-all">
+            <!-- Command Input Header -->
+            <div class="flex items-center px-4 py-3.5 border-b border-slate-800 bg-slate-950/50 gap-3">
+                <i data-lucide="sparkles" class="w-5 h-5 text-indigo-400"></i>
+                <input type="text" id="commandPaletteInput" placeholder="Type a command or ask AI (e.g. Summarize inbox, Find invoices, Draft reply)..." 
+                    class="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-400 focus:outline-none font-medium">
+                <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">ESC</span>
+            </div>
+
+            <!-- Command Action List -->
+            <div class="p-2 max-h-80 overflow-y-auto space-y-1 text-xs" id="commandPaletteResults">
+                <div class="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">AI Quick Actions</div>
+                
+                <button onclick="executeCommand('summarize_inbox')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-indigo-600/20 hover:border-indigo-500/30 border border-transparent transition text-left">
+                    <div class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-slate-200">⚡ Summarize Inbox</div>
+                        <div class="text-[11px] text-slate-400">Generate holistic AI overview of recent unread messages</div>
+                    </div>
+                </button>
+
+                <button onclick="executeCommand('find_invoices')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-emerald-600/20 hover:border-emerald-500/30 border border-transparent transition text-left">
+                    <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
+                        <i data-lucide="receipt" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-slate-200">🧾 Find Invoices & Receipts</div>
+                        <div class="text-[11px] text-slate-400">Filter and display all payment receipts and order confirmations</div>
+                    </div>
+                </button>
+
+                <button onclick="executeCommand('draft_reply')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-purple-600/20 hover:border-purple-500/30 border border-transparent transition text-left">
+                    <div class="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-slate-200">✍️ Draft Reply to Selected Email</div>
+                        <div class="text-[11px] text-slate-400">Open AI composer with pre-filled context for active email</div>
+                    </div>
+                </button>
+
+                <button onclick="executeCommand('show_meetings')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-amber-600/20 hover:border-amber-500/30 border border-transparent transition text-left">
+                    <div class="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center">
+                        <i data-lucide="calendar" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-slate-200">📅 Show Meeting Invitations & Schedules</div>
+                        <div class="text-[11px] text-slate-400">Locate upcoming calendar invites, interviews and schedules</div>
+                    </div>
+                </button>
+
+                <button onclick="executeCommand('open_ai_search')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-blue-600/20 hover:border-blue-500/30 border border-transparent transition text-left">
+                    <div class="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-300 flex items-center justify-center">
+                        <i data-lucide="bot" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-slate-200">🤖 Ask AI Assistant (Natural Language)</div>
+                        <div class="text-[11px] text-slate-400">Query your inbox using hybrid vector retrieval Q&A</div>
+                    </div>
+                </button>
+            </div>
+            
+            <div class="px-4 py-2 bg-slate-950/60 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                <span>Tip: Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">Ctrl + K</kbd> anytime</span>
+                <span class="text-indigo-400 font-medium">SmartMail AI Palette</span>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /#appShell -->
+
+    <!-- Application Script -->
+    <script src="js/app.js?v=16.0"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
