@@ -92,15 +92,25 @@ class SyncService:
             # Fetch from multiple queries so Inbox, Sent, Starred, and Important all populate
             for query_param in ["in:inbox", "in:sent", "is:starred", "is:important"]:
                 try:
-                    resp = await client.get(f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=100", headers=headers)
-                    if resp.status_code == 200:
-                        for item in resp.json().get("messages", []):
-                            m_id = item["id"]
-                            if m_id not in seen_ids:
-                                seen_ids.add(m_id)
-                                message_ids_to_fetch.append(m_id)
-                    else:
-                        logger.warning("Gmail query '%s' status %d: %s", query_param, resp.status_code, resp.text)
+                    page_token = None
+                    while True:
+                        url = f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=100"
+                        if page_token:
+                            url += f"&pageToken={page_token}"
+                        resp = await client.get(url, headers=headers)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            for item in data.get("messages", []):
+                                m_id = item["id"]
+                                if m_id not in seen_ids:
+                                    seen_ids.add(m_id)
+                                    message_ids_to_fetch.append(m_id)
+                            page_token = data.get("nextPageToken")
+                            if not page_token or len(message_ids_to_fetch) >= 300:
+                                break
+                        else:
+                            logger.warning("Gmail query '%s' status %d: %s", query_param, resp.status_code, resp.text)
+                            break
                 except Exception as e:
                     logger.warning("Error fetching query '%s': %s", query_param, e)
 
