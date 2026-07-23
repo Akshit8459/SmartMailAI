@@ -228,97 +228,6 @@ class SyncService:
 
             return count
 
-
-async def run_background_gmail_sync(user_id: str, access_token: str, message_ids: list):
-    """Background task that continuously syncs remaining 250+ Gmail emails in background batches."""
-    if not message_ids:
-        return
-    try:
-        from app.core.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            svc = SyncService(session)
-            headers = {"Authorization": f"Bearer {access_token}"}
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                processed_thread_ids = set()
-                processed_email_ids = set()
-                batch_size = 15
-                for i in range(0, len(message_ids), batch_size):
-                    batch_ids = message_ids[i:i+batch_size]
-                    to_fetch = []
-                    for msg_id in batch_ids:
-                        with session.no_autoflush:
-                            existing = await session.get(Email, msg_id)
-                        if existing:
-                            processed_email_ids.add(msg_id)
-                        else:
-                            to_fetch.append(msg_id)
-
-                    if not to_fetch:
-                        continue
-
-                    tasks = [client.get(f"{GMAIL_MESSAGES_URL}/{m_id}?format=full", headers=headers) for m_id in to_fetch]
-                    responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-                    for msg_resp in responses:
-                        if isinstance(msg_resp, Exception) or msg_resp.status_code != 200:
-                            continue
-
-                        parsed = svc._parse_gmail_message(msg_resp.json(), user_id)
-                        msg_id = parsed["id"]
-                        thread_id = parsed["thread_id"]
-
-                        if msg_id in processed_email_ids:
-                            continue
-
-                        with session.no_autoflush:
-                            existing_email = await session.get(Email, msg_id)
-                        if existing_email:
-                            processed_email_ids.add(msg_id)
-                            continue
-
-                        if thread_id not in processed_thread_ids:
-                            with session.no_autoflush:
-                                thread = await session.get(Thread, thread_id)
-                            if not thread:
-                                thread = Thread(
-                                    id=thread_id,
-                                    user_id=user_id,
-                                    subject=parsed["subject"],
-                                    snippet=parsed["snippet"],
-                                    last_message_at=parsed["received_at"],
-                                    unread_count=1 if parsed["is_unread"] else 0
-                                )
-                                session.add(thread)
-                            processed_thread_ids.add(thread_id)
-
-                        email_entity = Email(
-                            id=parsed["id"],
-                            thread_id=parsed["thread_id"],
-                            user_id=user_id,
-                            sender_name=parsed["sender_name"],
-                            sender_email=parsed["sender_email"],
-                            recipient_list=parsed["recipient_list"],
-                            subject=parsed["subject"],
-                            snippet=parsed["snippet"],
-                            body_html=parsed["body_html"] or f"<div><p>{parsed['body_text']}</p></div>",
-                            body_text=parsed["body_text"],
-                            received_at=parsed["received_at"],
-                            is_unread=parsed["is_unread"],
-                            is_starred=parsed["is_starred"],
-                            is_important=parsed["is_important"],
-                            labels=parsed["labels"]
-                        )
-                        session.add(email_entity)
-                        processed_email_ids.add(msg_id)
-
-                    try:
-                        await session.commit()
-                    except Exception as ex:
-                        logger.warning("Background session commit warning: %s", ex)
-                        await session.rollback()
-    except Exception as ex:
-        logger.warning("Background sync error for user %s: %s", user_id, ex)
-
     def _parse_gmail_message(self, msg_data: dict, user_id: str) -> dict:
         msg_id = msg_data.get("id")
         thread_id = msg_data.get("threadId", msg_id)
@@ -768,3 +677,94 @@ Customer
 
         await self.session.commit()
         return count
+
+
+async def run_background_gmail_sync(user_id: str, access_token: str, message_ids: list):
+    """Background task that continuously syncs remaining 250+ Gmail emails in background batches."""
+    if not message_ids:
+        return
+    try:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            svc = SyncService(session)
+            headers = {"Authorization": f"Bearer {access_token}"}
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                processed_thread_ids = set()
+                processed_email_ids = set()
+                batch_size = 15
+                for i in range(0, len(message_ids), batch_size):
+                    batch_ids = message_ids[i:i+batch_size]
+                    to_fetch = []
+                    for msg_id in batch_ids:
+                        with session.no_autoflush:
+                            existing = await session.get(Email, msg_id)
+                        if existing:
+                            processed_email_ids.add(msg_id)
+                        else:
+                            to_fetch.append(msg_id)
+
+                    if not to_fetch:
+                        continue
+
+                    tasks = [client.get(f"{GMAIL_MESSAGES_URL}/{m_id}?format=full", headers=headers) for m_id in to_fetch]
+                    responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    for msg_resp in responses:
+                        if isinstance(msg_resp, Exception) or msg_resp.status_code != 200:
+                            continue
+
+                        parsed = svc._parse_gmail_message(msg_resp.json(), user_id)
+                        msg_id = parsed["id"]
+                        thread_id = parsed["thread_id"]
+
+                        if msg_id in processed_email_ids:
+                            continue
+
+                        with session.no_autoflush:
+                            existing_email = await session.get(Email, msg_id)
+                        if existing_email:
+                            processed_email_ids.add(msg_id)
+                            continue
+
+                        if thread_id not in processed_thread_ids:
+                            with session.no_autoflush:
+                                thread = await session.get(Thread, thread_id)
+                            if not thread:
+                                thread = Thread(
+                                    id=thread_id,
+                                    user_id=user_id,
+                                    subject=parsed["subject"],
+                                    snippet=parsed["snippet"],
+                                    last_message_at=parsed["received_at"],
+                                    unread_count=1 if parsed["is_unread"] else 0
+                                )
+                                session.add(thread)
+                            processed_thread_ids.add(thread_id)
+
+                        email_entity = Email(
+                            id=parsed["id"],
+                            thread_id=parsed["thread_id"],
+                            user_id=user_id,
+                            sender_name=parsed["sender_name"],
+                            sender_email=parsed["sender_email"],
+                            recipient_list=parsed["recipient_list"],
+                            subject=parsed["subject"],
+                            snippet=parsed["snippet"],
+                            body_html=parsed["body_html"] or f"<div><p>{parsed['body_text']}</p></div>",
+                            body_text=parsed["body_text"],
+                            received_at=parsed["received_at"],
+                            is_unread=parsed["is_unread"],
+                            is_starred=parsed["is_starred"],
+                            is_important=parsed["is_important"],
+                            labels=parsed["labels"]
+                        )
+                        session.add(email_entity)
+                        processed_email_ids.add(msg_id)
+
+                    try:
+                        await session.commit()
+                    except Exception as ex:
+                        logger.warning("Background session commit warning: %s", ex)
+                        await session.rollback()
+    except Exception as ex:
+        logger.warning("Background sync error for user %s: %s", user_id, ex)
