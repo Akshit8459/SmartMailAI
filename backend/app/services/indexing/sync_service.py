@@ -87,14 +87,18 @@ class SyncService:
                             headers = {"Authorization": f"Bearer {access_token}"}
                             logger.info("Successfully auto-refreshed Google access token for user %s", user_id)
 
-            message_ids_to_fetch = set()
+            message_ids_to_fetch = []
+            seen_ids = set()
             # Fetch from multiple queries so Inbox, Sent, Starred, and Important all populate
             for query_param in ["in:inbox", "in:sent", "is:starred", "is:important"]:
                 try:
                     resp = await client.get(f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=100", headers=headers)
                     if resp.status_code == 200:
                         for item in resp.json().get("messages", []):
-                            message_ids_to_fetch.add(item["id"])
+                            m_id = item["id"]
+                            if m_id not in seen_ids:
+                                seen_ids.add(m_id)
+                                message_ids_to_fetch.append(m_id)
                     else:
                         logger.warning("Gmail query '%s' status %d: %s", query_param, resp.status_code, resp.text)
                 except Exception as e:
@@ -105,10 +109,9 @@ class SyncService:
 
             import asyncio
             count = 0
-            msg_id_list = list(message_ids_to_fetch)
             batch_size = 10
-            for i in range(0, len(msg_id_list), batch_size):
-                batch_ids = msg_id_list[i:i+batch_size]
+            for i in range(0, len(message_ids_to_fetch), batch_size):
+                batch_ids = message_ids_to_fetch[i:i+batch_size]
                 to_fetch_ids = []
                 for msg_id in batch_ids:
                     with self.session.no_autoflush:
@@ -144,88 +147,110 @@ class SyncService:
                         )
                         self.session.add(thread)
 
-                email_entity = Email(
-                    id=parsed["id"],
-                    thread_id=parsed["thread_id"],
-                    user_id=user_id,
-                    sender_name=parsed["sender_name"],
-                    sender_email=parsed["sender_email"],
-                    recipient_list=parsed["recipient_list"],
-                    subject=parsed["subject"],
-                    snippet=parsed["snippet"],
-                    body_html=parsed["body_html"] or f"<div><p>{parsed['body_text']}</p></div>",
-                    body_text=parsed["body_text"],
-                    received_at=parsed["received_at"],
-                    is_unread=parsed["is_unread"],
-                    is_starred=parsed["is_starred"],
-                    is_important=parsed["is_important"],
-                    labels=parsed["labels"]
-                )
-                self.session.add(email_entity)
-
-                date_str = parsed["received_at"].strftime("%Y-%m-%d")
-
-                # Parse and fetch real Gmail attachments
-                from app.services.indexing.attachment_parser import attachment_parser
-                for idx, att_info in enumerate(parsed.get("attachments", []), 1):
-                    raw_bytes = None
-                    if att_info.get("data"):
-                        try:
-                            raw_bytes = base64.urlsafe_b64decode(att_info["data"])
-                        except Exception:
-                            pass
-                    elif att_info.get("attachment_id"):
-                        try:
-                            att_url = f"{GMAIL_MESSAGES_URL}/{msg_id}/attachments/{att_info['attachment_id']}"
-                            att_resp = await client.get(att_url, headers=headers)
-                            if att_resp.status_code == 200:
-                                att_data_b64 = att_resp.json().get("data", "")
-                                if att_data_b64:
-                                    raw_bytes = base64.urlsafe_b64decode(att_data_b64)
-                        except Exception as ex:
-                            logger.warning("Failed to fetch Gmail attachment %s: %s", att_info.get("attachment_id"), ex)
-
-                    extracted_text = ""
-                    storage_path = ""
-                    att_id = f"att_{msg_id}_{idx}"
-                    if raw_bytes:
-                        extracted_text = attachment_parser.extract_text(att_info["filename"], raw_bytes, att_info["mime_type"])
-                        try:
-                            storage_dir = os.path.join(os.getcwd(), "storage", "attachments")
-                            os.makedirs(storage_dir, exist_ok=True)
-                            file_path = os.path.join(storage_dir, f"{att_id}_{att_info['filename']}")
-                            with open(file_path, "wb") as f:
-                                f.write(raw_bytes)
-                            storage_path = file_path
-                        except Exception as st_err:
-                            logger.warning("Failed to save attachment file %s: %s", att_info.get("filename"), st_err)
-                    else:
-                        extracted_text = f"Attachment filename: {att_info['filename']}"
-
-                    att_entity = Attachment(
-                        id=att_id,
-                        email_id=msg_id,
-                        filename=att_info["filename"],
-                        mime_type=att_info["mime_type"],
-                        file_size=att_info["file_size"],
-                        storage_path=storage_path,
-                        extracted_text=extracted_text
-                    )
-                    self.session.add(att_entity)
-
-                    # Vector chunk attachment text for RAG
-                    att_chunks = semantic_chunker.chunk_attachment(
-                        email_id=msg_id,
+                    email_entity = Email(
+                        id=parsed["id"],
                         thread_id=parsed["thread_id"],
                         user_id=user_id,
-                        attachment_id=att_id,
-                        filename=att_info["filename"],
-                        extracted_text=extracted_text,
+                        sender_name=parsed["sender_name"],
+                        sender_email=parsed["sender_email"],
+                        recipient_list=parsed["recipient_list"],
                         subject=parsed["subject"],
-                        sender=parsed["sender_name"],
-                        date_str=date_str
+                        snippet=parsed["snippet"],
+                        body_html=parsed["body_html"] or f"<div><p>{parsed['body_text']}</p></div>",
+                        body_text=parsed["body_text"],
+                        received_at=parsed["received_at"],
+                        is_unread=parsed["is_unread"],
+                        is_starred=parsed["is_starred"],
+                        is_important=parsed["is_important"],
+                        labels=parsed["labels"]
                     )
-                    for c_data in att_chunks:
+                    self.session.add(email_entity)
+
+                    date_str = parsed["received_at"].strftime("%Y-%m-%d")
+
+                    # Parse and fetch real Gmail attachments
+                    from app.services.indexing.attachment_parser import attachment_parser
+                    for idx, att_info in enumerate(parsed.get("attachments", []), 1):
+                        raw_bytes = None
+                        if att_info.get("data"):
+                            try:
+                                raw_bytes = base64.urlsafe_b64decode(att_info["data"])
+                            except Exception:
+                                pass
+                        elif att_info.get("attachment_id"):
+                            try:
+                                att_url = f"{GMAIL_MESSAGES_URL}/{msg_id}/attachments/{att_info['attachment_id']}"
+                                att_resp = await client.get(att_url, headers=headers)
+                                if att_resp.status_code == 200:
+                                    att_data_b64 = att_resp.json().get("data", "")
+                                    if att_data_b64:
+                                        raw_bytes = base64.urlsafe_b64decode(att_data_b64)
+                            except Exception as ex:
+                                logger.warning("Failed to fetch Gmail attachment %s: %s", att_info.get("attachment_id"), ex)
+
+                        extracted_text = ""
+                        storage_path = ""
+                        att_id = f"att_{msg_id}_{idx}"
+                        if raw_bytes:
+                            extracted_text = attachment_parser.extract_text(att_info["filename"], raw_bytes, att_info["mime_type"])
+                            try:
+                                storage_dir = os.path.join(os.getcwd(), "storage", "attachments")
+                                os.makedirs(storage_dir, exist_ok=True)
+                                file_path = os.path.join(storage_dir, f"{att_id}_{att_info['filename']}")
+                                with open(file_path, "wb") as f:
+                                    f.write(raw_bytes)
+                                storage_path = file_path
+                            except Exception as st_err:
+                                logger.warning("Failed to save attachment file %s: %s", att_info.get("filename"), st_err)
+                        else:
+                            extracted_text = f"Attachment filename: {att_info['filename']}"
+
+                        att_entity = Attachment(
+                            id=att_id,
+                            email_id=msg_id,
+                            filename=att_info["filename"],
+                            mime_type=att_info["mime_type"],
+                            file_size=att_info["file_size"],
+                            storage_path=storage_path,
+                            extracted_text=extracted_text
+                        )
+                        self.session.add(att_entity)
+
+                        # Vector chunk attachment text for RAG
+                        att_chunks = semantic_chunker.chunk_attachment(
+                            email_id=msg_id,
+                            thread_id=parsed["thread_id"],
+                            user_id=user_id,
+                            attachment_id=att_id,
+                            filename=att_info["filename"],
+                            extracted_text=extracted_text,
+                            subject=parsed["subject"],
+                            sender=parsed["sender_name"],
+                            date_str=date_str
+                        )
+                        for c_data in att_chunks:
+                            chunk_entity = EmailChunk(
+                                email_id=c_data["email_id"],
+                                thread_id=c_data["thread_id"],
+                                user_id=c_data["user_id"],
+                                chunk_index=c_data["chunk_index"],
+                                content=c_data["content"],
+                                chunk_metadata=c_data["chunk_metadata"],
+                                embedding=c_data["embedding"]
+                            )
+                            self.session.add(chunk_entity)
+
+                    chunks_data = semantic_chunker.chunk_email(
+                        email_id=parsed["id"],
+                        thread_id=parsed["thread_id"],
+                        user_id=user_id,
+                        sender=parsed["sender_name"],
+                        subject=parsed["subject"],
+                        date_str=date_str,
+                        body_text=parsed["body_text"]
+                    )
+
+                    for c_data in chunks_data:
                         chunk_entity = EmailChunk(
                             email_id=c_data["email_id"],
                             thread_id=c_data["thread_id"],
@@ -237,33 +262,12 @@ class SyncService:
                         )
                         self.session.add(chunk_entity)
 
-                chunks_data = semantic_chunker.chunk_email(
-                    email_id=parsed["id"],
-                    thread_id=parsed["thread_id"],
-                    user_id=user_id,
-                    sender=parsed["sender_name"],
-                    subject=parsed["subject"],
-                    date_str=date_str,
-                    body_text=parsed["body_text"]
-                )
+                    count += 1
 
-                for c_data in chunks_data:
-                    chunk_entity = EmailChunk(
-                        email_id=c_data["email_id"],
-                        thread_id=c_data["thread_id"],
-                        user_id=c_data["user_id"],
-                        chunk_index=c_data["chunk_index"],
-                        content=c_data["content"],
-                        chunk_metadata=c_data["chunk_metadata"],
-                        embedding=c_data["embedding"]
-                    )
-                    self.session.add(chunk_entity)
-
-                count += 1
                 try:
                     await self.session.commit()
                 except Exception as ex:
-                    logger.warning("Session commit warning on msg %s: %s", msg_id, ex)
+                    logger.warning("Session commit warning: %s", ex)
                     await self.session.rollback()
 
             return count
