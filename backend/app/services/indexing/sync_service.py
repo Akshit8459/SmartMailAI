@@ -120,6 +120,8 @@ class SyncService:
 
             import asyncio
             count = 0
+            processed_thread_ids = set()
+            processed_email_ids = set()
             batch_size = 10
             for i in range(0, len(message_ids_to_fetch), batch_size):
                 batch_ids = message_ids_to_fetch[i:i+batch_size]
@@ -129,6 +131,7 @@ class SyncService:
                         existing = await self.session.get(Email, msg_id)
                     if existing:
                         count += 1
+                        processed_email_ids.add(msg_id)
                     else:
                         to_fetch_ids.append(msg_id)
 
@@ -144,19 +147,31 @@ class SyncService:
 
                     parsed = self._parse_gmail_message(msg_resp.json(), user_id)
                     msg_id = parsed["id"]
+                    thread_id = parsed["thread_id"]
+
+                    if msg_id in processed_email_ids:
+                        continue
 
                     with self.session.no_autoflush:
-                        thread = await self.session.get(Thread, parsed["thread_id"])
-                    if not thread:
-                        thread = Thread(
-                            id=parsed["thread_id"],
-                            user_id=user_id,
-                            subject=parsed["subject"],
-                            snippet=parsed["snippet"],
-                            last_message_at=parsed["received_at"],
-                            unread_count=1 if parsed["is_unread"] else 0
-                        )
-                        self.session.add(thread)
+                        existing_email = await self.session.get(Email, msg_id)
+                    if existing_email:
+                        processed_email_ids.add(msg_id)
+                        continue
+
+                    if thread_id not in processed_thread_ids:
+                        with self.session.no_autoflush:
+                            thread = await self.session.get(Thread, thread_id)
+                        if not thread:
+                            thread = Thread(
+                                id=thread_id,
+                                user_id=user_id,
+                                subject=parsed["subject"],
+                                snippet=parsed["snippet"],
+                                last_message_at=parsed["received_at"],
+                                unread_count=1 if parsed["is_unread"] else 0
+                            )
+                            self.session.add(thread)
+                        processed_thread_ids.add(thread_id)
 
                     email_entity = Email(
                         id=parsed["id"],
@@ -176,6 +191,7 @@ class SyncService:
                         labels=parsed["labels"]
                     )
                     self.session.add(email_entity)
+                    processed_email_ids.add(msg_id)
 
                     date_str = parsed["received_at"].strftime("%Y-%m-%d")
 
@@ -391,13 +407,17 @@ class SyncService:
         """Populates high-quality sample emails scoped to user_id if inbox is empty."""
         user = await self.session.get(User, user_id)
         if not user:
-            user = User(
-                id=user_id,
-                email="user@example.com",
-                name="User",
-            )
-            self.session.add(user)
-            await self.session.flush()
+            try:
+                user = User(
+                    id=user_id,
+                    email="user@example.com",
+                    name="User",
+                )
+                self.session.add(user)
+                await self.session.flush()
+            except Exception:
+                await self.session.rollback()
+                user = await self.session.get(User, user_id)
 
         now = datetime.utcnow()
         sample_emails_data = [
