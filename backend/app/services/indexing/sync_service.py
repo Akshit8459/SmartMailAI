@@ -103,32 +103,46 @@ class SyncService:
             if not message_ids_to_fetch:
                 return 0
 
+            import asyncio
             count = 0
-            for msg_id in message_ids_to_fetch:
-                with self.session.no_autoflush:
-                    existing = await self.session.get(Email, msg_id)
-                if existing:
-                    count += 1
+            msg_id_list = list(message_ids_to_fetch)
+            batch_size = 10
+            for i in range(0, len(msg_id_list), batch_size):
+                batch_ids = msg_id_list[i:i+batch_size]
+                to_fetch_ids = []
+                for msg_id in batch_ids:
+                    with self.session.no_autoflush:
+                        existing = await self.session.get(Email, msg_id)
+                    if existing:
+                        count += 1
+                    else:
+                        to_fetch_ids.append(msg_id)
+
+                if not to_fetch_ids:
                     continue
 
-                msg_resp = await client.get(f"{GMAIL_MESSAGES_URL}/{msg_id}?format=full", headers=headers)
-                if msg_resp.status_code != 200:
-                    continue
+                tasks = [client.get(f"{GMAIL_MESSAGES_URL}/{m_id}?format=full", headers=headers) for m_id in to_fetch_ids]
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-                parsed = self._parse_gmail_message(msg_resp.json(), user_id)
-                
-                with self.session.no_autoflush:
-                    thread = await self.session.get(Thread, parsed["thread_id"])
-                if not thread:
-                    thread = Thread(
-                        id=parsed["thread_id"],
-                        user_id=user_id,
-                        subject=parsed["subject"],
-                        snippet=parsed["snippet"],
-                        last_message_at=parsed["received_at"],
-                        unread_count=1 if parsed["is_unread"] else 0
-                    )
-                    self.session.add(thread)
+                for msg_resp in responses:
+                    if isinstance(msg_resp, Exception) or msg_resp.status_code != 200:
+                        continue
+
+                    parsed = self._parse_gmail_message(msg_resp.json(), user_id)
+                    msg_id = parsed["id"]
+
+                    with self.session.no_autoflush:
+                        thread = await self.session.get(Thread, parsed["thread_id"])
+                    if not thread:
+                        thread = Thread(
+                            id=parsed["thread_id"],
+                            user_id=user_id,
+                            subject=parsed["subject"],
+                            snippet=parsed["snippet"],
+                            last_message_at=parsed["received_at"],
+                            unread_count=1 if parsed["is_unread"] else 0
+                        )
+                        self.session.add(thread)
 
                 email_entity = Email(
                     id=parsed["id"],
