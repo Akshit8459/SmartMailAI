@@ -90,12 +90,19 @@ class SyncService:
 
             message_ids_to_fetch = []
             seen_ids = set()
-            # Fetch from multiple queries so Inbox, Sent, Starred, and Important all populate
-            for query_param in ["in:inbox", "in:sent", "is:starred", "is:important"]:
+            # Query Gmail by labelIds and fallback to ensure 100% of all emails populate
+            query_urls = [
+                f"{GMAIL_MESSAGES_URL}?labelIds=INBOX&maxResults=100",
+                f"{GMAIL_MESSAGES_URL}?labelIds=SENT&maxResults=100",
+                f"{GMAIL_MESSAGES_URL}?labelIds=STARRED&maxResults=100",
+                f"{GMAIL_MESSAGES_URL}?labelIds=IMPORTANT&maxResults=100",
+                f"{GMAIL_MESSAGES_URL}?maxResults=100"
+            ]
+            for base_url in query_urls:
                 try:
                     page_token = None
                     while True:
-                        url = f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=100"
+                        url = base_url
                         if page_token:
                             url += f"&pageToken={page_token}"
                         resp = await client.get(url, headers=headers)
@@ -107,13 +114,13 @@ class SyncService:
                                     seen_ids.add(m_id)
                                     message_ids_to_fetch.append(m_id)
                             page_token = data.get("nextPageToken")
-                            if not page_token or len(message_ids_to_fetch) >= 300:
+                            if not page_token or len(message_ids_to_fetch) >= 500:
                                 break
                         else:
-                            logger.warning("Gmail query '%s' status %d: %s", query_param, resp.status_code, resp.text)
+                            logger.warning("Gmail URL '%s' status %d: %s", base_url, resp.status_code, resp.text)
                             break
                 except Exception as e:
-                    logger.warning("Error fetching query '%s': %s", query_param, e)
+                    logger.warning("Error fetching Gmail URL '%s': %s", base_url, e)
 
             if not message_ids_to_fetch:
                 return 0
@@ -123,9 +130,19 @@ class SyncService:
             processed_thread_ids = set()
             processed_email_ids = set()
 
-            # Foreground batch: process first 20 latest emails for instant Page 1 render
-            fg_ids = message_ids_to_fetch[:20]
-            bg_ids = message_ids_to_fetch[20:]
+            # Filter out existing DB emails first so fg_ids and bg_ids strictly contain UNSAVED emails
+            unfetched_ids = []
+            for m_id in message_ids_to_fetch:
+                with self.session.no_autoflush:
+                    existing = await self.session.get(Email, m_id)
+                if not existing:
+                    unfetched_ids.append(m_id)
+                else:
+                    count += 1
+                    processed_email_ids.add(m_id)
+
+            fg_ids = unfetched_ids[:20]
+            bg_ids = unfetched_ids[20:]
 
             batch_size = 10
             for i in range(0, len(fg_ids), batch_size):
