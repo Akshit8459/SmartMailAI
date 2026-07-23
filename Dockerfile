@@ -24,7 +24,8 @@ COPY --from=builder /install /usr/local
 # Copy application backend & frontend
 COPY backend /app/backend
 COPY frontend /app/frontend
-COPY .env /app/.env
+# Copy environment template
+COPY .env.example /app/.env.example
 
 # Create storage directory for attachments
 RUN mkdir -p /app/storage/attachments
