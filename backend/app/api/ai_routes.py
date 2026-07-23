@@ -55,11 +55,14 @@ async def query_rag_stream(request: Request, req: RAGQueryRequest, db: AsyncSess
     rag_svc = RAGService(db)
 
     async def event_generator():
-        sources = await rag_svc.get_sources_for_query(user_id=user_id, query=req.query)
-        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+        try:
+            sources = await rag_svc.get_sources_for_query(user_id=user_id, query=req.query)
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
 
-        async for chunk in rag_svc.answer_question_stream(user_id=user_id, query=req.query):
-            yield f"data: {json.dumps({'type': 'text', 'text': chunk})}\n\n"
+            async for chunk in rag_svc.answer_question_stream(user_id=user_id, query=req.query):
+                yield f"data: {json.dumps({'type': 'text', 'text': chunk})}\n\n"
+        except Exception as ex:
+            yield f"data: {json.dumps({'type': 'text', 'text': f'An error occurred while analyzing emails: {str(ex)}'})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

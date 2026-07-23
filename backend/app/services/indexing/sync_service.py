@@ -91,7 +91,7 @@ class SyncService:
             # Fetch from multiple queries so Inbox, Sent, Starred, and Important all populate
             for query_param in ["in:inbox", "in:sent", "is:starred", "is:important"]:
                 try:
-                    resp = await client.get(f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=15", headers=headers)
+                    resp = await client.get(f"{GMAIL_MESSAGES_URL}?q={query_param}&maxResults=100", headers=headers)
                     if resp.status_code == 200:
                         for item in resp.json().get("messages", []):
                             message_ids_to_fetch.add(item["id"])
