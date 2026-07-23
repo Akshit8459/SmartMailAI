@@ -65,8 +65,8 @@ try:
         __tablename__ = "emails"
 
         id = Column(String, primary_key=True)
-        thread_id = Column(String, ForeignKey("threads.id"), nullable=False)
-        user_id = Column(String, ForeignKey("users.id"), nullable=False)
+        thread_id = Column(String, ForeignKey("threads.id"), index=True, nullable=False)
+        user_id = Column(String, ForeignKey("users.id"), index=True, nullable=False)
         sender_name = Column(String, default="")
         sender_email = Column(String, index=True, nullable=False)
         recipient_list = Column(Text, default="")
@@ -75,9 +75,9 @@ try:
         body_html = Column(Text, default="")
         body_text = Column(Text, default="")
         received_at = Column(DateTime, index=True, default=datetime.utcnow)
-        is_unread = Column(Boolean, default=True)
-        is_starred = Column(Boolean, default=False)
-        is_important = Column(Boolean, default=False)
+        is_unread = Column(Boolean, index=True, default=True)
+        is_starred = Column(Boolean, index=True, default=False)
+        is_important = Column(Boolean, index=True, default=False)
         labels = Column(JSON, default=list)
 
         user = relationship("User", back_populates="emails")

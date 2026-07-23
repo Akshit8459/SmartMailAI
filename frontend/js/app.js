@@ -1050,19 +1050,34 @@ function navigateEmails(direction) {
 }
 
 async function toggleStar(emailId, event) {
-    event.stopPropagation();
+    if (event) event.stopPropagation();
     const email = state.emails.find(e => e.id === emailId);
-    const newStarred = email ? !email.is_starred : true;
-    try {
-        const res = await apiFetch(`/emails/${emailId}/star`, {
-            method: 'PATCH',
-            body: JSON.stringify({ is_starred: newStarred })
-        });
-        if (res.ok) {
-            if (email) email.is_starred = newStarred;
-            loadEmails(state.currentFolder, state.offset);
+    if (!email) return;
+
+    // Optimistic UI Update (0ms latency)
+    email.is_starred = !email.is_starred;
+    if (event && event.currentTarget) {
+        const icon = event.currentTarget.querySelector('i, svg');
+        if (icon) {
+            if (email.is_starred) {
+                icon.classList.add('text-amber-400', 'fill-amber-400');
+                icon.classList.remove('text-slate-400');
+            } else {
+                icon.classList.remove('text-amber-400', 'fill-amber-400');
+                icon.classList.add('text-slate-400');
+            }
         }
-    } catch (err) { console.error('toggleStar error:', err); }
+    }
+
+    try {
+        await apiFetch(`/emails/${emailId}/star`, {
+            method: 'PATCH',
+            body: JSON.stringify({ is_starred: email.is_starred })
+        });
+    } catch (err) {
+        email.is_starred = !email.is_starred;
+        console.error('toggleStar error:', err);
+    }
 }
 
 function openCompose() {
