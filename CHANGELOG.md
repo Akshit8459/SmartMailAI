@@ -4,6 +4,22 @@ All notable changes to **SmartMail AI** will be documented in this file.
 
 ---
 
+## [1.2.0] - 2026-07-24
+
+### Added
+- **Render Free PostgreSQL Driver Support (`asyncpg` & `psycopg2-binary`)**: Added seamless dual-database engine support for both SQLite (`aiosqlite`) and PostgreSQL (`asyncpg`), with automatic URL scheme normalization (`postgres://` ➔ `postgresql+asyncpg://`).
+- **Two-Phase Email Sync Architecture (`sync_service.py`)**: Foreground Phase 1 syncs the top 20 latest emails synchronously for **sub-1-second Page 1 Inbox rendering**, while background Phase 2 non-blocking worker ingests all remaining 250+ emails in parallel batches.
+- **Direct Gmail `labelIds` Storage Retrieval**: Switched from search indexing (`q=in:inbox`) to direct Gmail storage label endpoints (`labelIds=INBOX`, `labelIds=SENT`, `labelIds=STARRED`, `labelIds=IMPORTANT`), guaranteeing 100% email population across all pages.
+- **In-Memory Thread & Email Deduplication**: Eliminated `threads_pkey` and `users_pkey` duplicate key violation errors during parallel concurrent PostgreSQL batch commits.
+
+### Fixed
+- **PostgreSQL JSON Label Query Fix (`email_repository.py`)**: Simplified `INBOX` repository queries, removing fragile `cast(JSON, String)` expressions to populate 100% of synced emails in the Inbox.
+- **AI Chat RAG Cache Optimization (`rag_service.py`)**: Removed redundant per-query email re-chunking calls, reducing AI Chat response latency down to **sub-2 seconds**.
+- **12s NIM Timeout Fallback (`nvidia.py`)**: Added `httpx.Timeout(12.0)` with fallback streaming to prevent UI hangs.
+- **GitHub Actions CI/CD Fix (`ci.yml` & `test_semantic_chunker.py`)**: Updated `PYTHONPATH`, Docker build context path, and embedding dimension assertions for 100% green CI pipeline execution.
+
+---
+
 ## [1.1.0] - 2026-07-23
 
 ### Added

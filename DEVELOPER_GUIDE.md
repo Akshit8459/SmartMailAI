@@ -28,6 +28,8 @@ HOST=0.0.0.0
 PORT=8000
 SECRET_KEY=smartmail-super-secret-key-change-in-production-aes256
 DATABASE_URL=sqlite+aiosqlite:///./smartmail.db
+# For Render / External PostgreSQL, supply postgresql:// URL directly:
+# DATABASE_URL=postgresql://user:pass@host/dbname
 
 # Pluggable LLM Settings (nvidia, openai, ollama)
 LLM_PROVIDER=nvidia

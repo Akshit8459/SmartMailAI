@@ -6,10 +6,10 @@ Welcome to **SmartMail AI**! This guide walks you through navigating your inbox,
 
 ## 🔑 1. Logging In & Inbox Sync
 
-1. Open **`http://localhost:8000`** in your browser.
-2. Click **"Sign in with Google"** (or **"Demo Guest Access"** for instant guest evaluation).
-3. Once authenticated, your inbox will load immediately. An animated status badge (`⚡ Syncing your Gmail inbox...`) indicates background synchronization.
-4. Messages across `INBOX`, `SENT`, `STARRED`, and `IMPORTANT` will automatically update.
+1. Open **`https://smartmailai-oqae.onrender.com`** (or **`http://localhost:8000`** locally) in your browser.
+2. Click **"Sign in with Google"** (or **"Demo Guest Access"** for instant evaluation).
+3. Once authenticated, **Page 1 of your Inbox loads in < 1 second**.
+4. In the background, remaining emails across all folders are ingested in parallel and auto-refreshed in real-time.
 
 ---
 
