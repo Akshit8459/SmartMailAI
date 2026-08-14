@@ -14,8 +14,8 @@ If you encounter a bug or have a feature suggestion:
 ### 2. Local Development Setup
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/your-username/SmartMail-AI.git
-   cd SmartMail-AI
+   git clone https://github.com/Akshit8459/SmartMailAI.git
+   cd SmartMailAI
    ```
 2. Set up a Python 3.12 virtual environment and install dependencies:
    ```bash
